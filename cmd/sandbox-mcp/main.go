@@ -9,6 +9,7 @@ import (
 	"github.com/pottekkat/sandbox-mcp/internal/appconfig"
 	"github.com/pottekkat/sandbox-mcp/internal/config"
 	"github.com/pottekkat/sandbox-mcp/internal/sandbox"
+	"github.com/pottekkat/sandbox-mcp/internal/servertoolclient"
 )
 
 func main() {
@@ -55,6 +56,8 @@ func main() {
 		}
 		return
 	}
+
+	servertoolclient.GetTools()
 
 	// Only start MCP server if the stdio flag is present
 	if *stdio {

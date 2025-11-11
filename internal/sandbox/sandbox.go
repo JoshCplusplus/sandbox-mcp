@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +81,7 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Con
 		// Get the contents of the entrypoint file from the request
 		entrypointFile := config.SandboxFile{Name: sandboxConfig.Entrypoint}
 		entrypointParam := entrypointFile.ParamName()
+		log.Println(request.Params.Arguments)
 		entrypointContent, ok := request.Params.Arguments[entrypointParam].(string)
 		if !ok || entrypointContent == "" {
 			return nil, fmt.Errorf("%s file is required", sandboxConfig.Entrypoint)

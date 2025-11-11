@@ -46,3 +46,4 @@ require (
 )
 
 // replace github.com/mark3labs/mcp-go => ../mcp-go/
+replace github.com/pottekkat/sandbox-mcp => ./
