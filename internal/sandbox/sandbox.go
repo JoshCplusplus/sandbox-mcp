@@ -3,7 +3,9 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -74,19 +76,22 @@ func NewSandboxTool(sandboxConfig *config.SandboxConfig) mcp.Tool {
 }
 
 // NewSandboxToolHandler creates a handler function for a sandbox tool
-func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, weatherFile []byte, clientFile []byte) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Return the handler function that will be run when the tool is called
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+
+		log.Println(request.Params.Arguments)
+
 		// withEntrypoint ToolOption
 		// Get the contents of the entrypoint file from the request
-		entrypointFile := config.SandboxFile{Name: sandboxConfig.Entrypoint}
-		entrypointParam := entrypointFile.ParamName()
-		log.Println(request.Params.Arguments)
-		entrypointContent, ok := request.Params.Arguments[entrypointParam].(string)
-		if !ok || entrypointContent == "" {
-			return nil, fmt.Errorf("%s file is required", sandboxConfig.Entrypoint)
-		}
-
+		/*
+			entrypointFile := config.SandboxFile{Name: sandboxConfig.Entrypoint}
+			entrypointParam := entrypointFile.ParamName()
+			entrypointContent, ok := request.Params.Arguments[entrypointParam].(string)
+			if !ok || entrypointContent == "" {
+				return nil, fmt.Errorf("%s file is required", sandboxConfig.Entrypoint)
+			}
+		*/
 		// Create a temporary directory for the entrypoint file
 		dir, err := os.MkdirTemp("", sandboxConfig.Mount.TmpDirPrefix)
 		if err != nil {
@@ -94,10 +99,36 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Con
 		}
 		defer os.RemoveAll(dir)
 
-		// Write the entrypoint to script file in the temp directory
-		cmdFile := filepath.Join(dir, sandboxConfig.Entrypoint)
-		if err := os.WriteFile(cmdFile, []byte(entrypointContent), sandboxConfig.Mount.ScriptPerms()); err != nil {
-			return nil, fmt.Errorf("failed to write command file: %v", err)
+		log.Println("Directory made at " + dir)
+
+		/*
+			// Write the entrypoint to script file in the temp directory
+			cmdFile := filepath.Join(dir, sandboxConfig.Entrypoint)
+			if err := os.WriteFile(cmdFile, []byte(entrypointContent), sandboxConfig.Mount.ScriptPerms()); err != nil {
+				return nil, fmt.Errorf("failed to write command file: %v", err)
+			}
+		*/
+
+		weatherFilePath := filepath.Join(dir, "weather.py")
+		if err := os.WriteFile(weatherFilePath, []byte(weatherFile), sandboxConfig.Mount.ScriptPerms()); err != nil {
+			return nil, fmt.Errorf("failed to write weather file: %v", err)
+		}
+
+		clientFilePath := filepath.Join(dir, "client.py")
+		if err := os.WriteFile(clientFilePath, []byte(clientFile), sandboxConfig.Mount.ScriptPerms()); err != nil {
+			return nil, fmt.Errorf("failed to write client file: %v", err)
+		}
+
+		// Read the directory contents
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			log.Fatalf("Error reading directory: %v", err)
+		}
+
+		// Iterate through the entries and print file/directory names
+		log.Printf("Contents of directory '%s':\n", dir)
+		for _, entry := range entries {
+			log.Println(entry.Name())
 		}
 
 		// withFile ToolOption
@@ -143,10 +174,22 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Con
 		}
 		defer cli.Close()
 
+		log.Println("Config to be run is ", sandboxConfig)
+
+		commandToRun := append(sandboxConfig.RunCommand(), tool.Name)
+		if len(request.Params.Arguments) > 0 {
+			jsonBytes, err := json.Marshal(request.Params.Arguments)
+			if err != nil {
+				log.Fatal(err)
+			}
+			commandToRun = append(commandToRun, string(jsonBytes))
+		}
+
+		log.Println("Command to run is ", commandToRun)
 		// Create container config
 		containerConfig := &container.Config{
 			Image:      sandboxConfig.Image,
-			Cmd:        sandboxConfig.RunCommand(),
+			Cmd:        commandToRun,
 			WorkingDir: sandboxConfig.Mount.WorkDir,
 			User:       sandboxConfig.User,
 			Tty:        sandboxConfig.Tty(),
@@ -281,19 +324,25 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Con
 				ShowStderr: true,
 				Timestamps: false,
 				Follow:     false,
+				Tail:       "1",
 			})
+			log.Println("Status returned was ", status)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get logs: %v", err)
 			}
 			defer logs.Close()
 
+			output, _ := io.ReadAll(logs)
+			log.Println("output was ", string(output))
+
 			// Read stdout and stderr
 			stdout := new(bytes.Buffer)
 			stderr := new(bytes.Buffer)
 			if _, err := stdcopy.StdCopy(stdout, stderr, logs); err != nil {
+				log.Println("Encountered error when reading logs: ", err)
 				return nil, fmt.Errorf("failed to read logs: %v", err)
 			}
-
+			log.Println("Statuscode returned was ", status.StatusCode)
 			// Return error if command failed
 			if status.StatusCode != 0 {
 				return mcp.NewToolResultError(stderr.String()), nil
@@ -304,8 +353,8 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig) func(context.Con
 				stdout.WriteString("\nStderr:\n")
 				stdout.Write(stderr.Bytes())
 			}
-
-			return mcp.NewToolResultText(stdout.String()), nil
+			log.Println("Stdout received was ", stdout.String())
+			return mcp.NewToolResultText(string(output)), nil
 		case <-execCtx.Done():
 			return nil, fmt.Errorf("execution timeout after %d seconds", int(sandboxConfig.Timeout().Seconds()))
 		}

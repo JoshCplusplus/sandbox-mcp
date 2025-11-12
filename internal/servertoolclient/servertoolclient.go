@@ -49,7 +49,7 @@ func parseCommand(cmd string) []string {
 	return result
 }
 
-func GetTools() {
+func GetTools() []mcp.Tool {
 
 	// List available tools
 	// Create a context with timeout
@@ -96,6 +96,7 @@ func GetTools() {
 	}
 	log.Println("Server is alive and responding")
 
+	var tools []mcp.Tool
 	// List available tools if the server supports them
 	if serverInfo.Capabilities.Tools != nil {
 		log.Println("Fetching available tools...")
@@ -108,5 +109,7 @@ func GetTools() {
 		for i, tool := range toolsResult.Tools {
 			log.Printf("  %d. %s - %s\n", i+1, tool.Name, tool.Description)
 		}
+		tools = toolsResult.Tools
 	}
+	return tools
 }

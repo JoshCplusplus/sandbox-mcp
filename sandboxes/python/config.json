@@ -13,7 +13,8 @@
 	"timeout": 60,
 	"command": [
 		"python",
-		"main.py"
+		"client.py",
+		"weather.py"
 	],
 	"parameters": {
 		"additionalFiles": true

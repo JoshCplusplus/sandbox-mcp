@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/pottekkat/sandbox-mcp/internal/appconfig"
@@ -57,7 +58,9 @@ func main() {
 		return
 	}
 
-	servertoolclient.GetTools()
+	pythonConfig := configs["python"]
+
+	serverTools := servertoolclient.GetTools()
 
 	// Only start MCP server if the stdio flag is present
 	if *stdio {
@@ -71,17 +74,29 @@ func main() {
 		)
 
 		// Create and add tools for each sandbox configuration
-		for _, cfg := range configs {
+		for _, tool := range serverTools {
 			// Create a new tool from the config
-			tool := sandbox.NewSandboxTool(cfg)
+			//tool := sandbox.NewSandboxTool(cfg)
+
+			weatherFile, err := os.ReadFile("/Users/jc/UCSD/fa25/Secure-MCP/weather/weather.py")
+			if err != nil {
+				log.Printf("Error reading weather file: %v\n", err)
+				return
+			}
+
+			clientFile, err := os.ReadFile("/Users/jc/UCSD/fa25/227/sandbox-mcp/client.py")
+			if err != nil {
+				log.Printf("Error reading client file: %v\n", err)
+				return
+			}
 
 			// Create a handler using the sandbox config
-			handler := sandbox.NewSandboxToolHandler(cfg)
+			handler := sandbox.NewSandboxToolHandler(pythonConfig, tool, weatherFile, clientFile)
 
 			// Add the tool to the server
 			s.AddTool(tool, handler)
 
-			log.Printf("Added %s tool from config", cfg.Id)
+			log.Printf("Added %s tool from config", pythonConfig.Id)
 		}
 
 		log.Println("Starting Sandbox MCP server...")

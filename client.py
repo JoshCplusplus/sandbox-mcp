@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional
 from contextlib import AsyncExitStack
+import json
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -47,13 +48,13 @@ class MCPClient:
     async def run_tool(self, tool_name, tool_args=None):
                 
         # Execute tool call
-        tool_args = {'a': 1, 'b': 2, 'sidenote': "test"}
         result = await self.session.call_tool(tool_name, tool_args)
 
-        for content in result.content:
-            print(result)
-            print(content.text)
-            return content.text
+        return result.content[0].text
+    
+    async def cleanup(self):
+        """Clean up resources"""
+        await self.exit_stack.aclose()
 
 async def main():
     if len(sys.argv) < 3:
@@ -64,14 +65,13 @@ async def main():
     try:
         await client.connect_to_server(sys.argv[1])
         if len(sys.argv) == 4:
-            await client.run_tool(sys.argv[2], sys.argv[3])
+            return await client.run_tool(sys.argv[2], json.loads(sys.argv[3]))
         else:
-            await client.run_tool(sys.argv[2])
+            return await client.run_tool(sys.argv[2])
         #await client.chat_loop()
     finally:
         await client.cleanup()
 
-
 if __name__ == "__main__":
     import sys
-    asyncio.run(main())
+    print(asyncio.run(main()), end="")
