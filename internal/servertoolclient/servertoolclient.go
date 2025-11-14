@@ -49,7 +49,7 @@ func parseCommand(cmd string) []string {
 	return result
 }
 
-func GetTools() []mcp.Tool {
+func GetTools(filePath string) []mcp.Tool {
 
 	// List available tools
 	// Create a context with timeout
@@ -57,8 +57,8 @@ func GetTools() []mcp.Tool {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	args := parseCommand("python3 /Users/jc/UCSD/fa25/Secure-MCP/weather/weather.py")
-	stdioTransport := transport.NewStdio(args[0], nil, args[1:]...)
+	pythonCmd := "python3"
+	stdioTransport := transport.NewStdio(pythonCmd, nil, filePath)
 
 	// Create client with the transport
 	c = client.NewClient(stdioTransport)

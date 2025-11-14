@@ -7,6 +7,7 @@ require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/mark3labs/mcp-go v0.27.0
 	github.com/moby/go-archive v0.1.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

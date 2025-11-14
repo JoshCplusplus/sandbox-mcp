@@ -10,6 +10,7 @@ import (
 	"github.com/pottekkat/sandbox-mcp/internal/appconfig"
 	"github.com/pottekkat/sandbox-mcp/internal/config"
 	"github.com/pottekkat/sandbox-mcp/internal/sandbox"
+	"github.com/pottekkat/sandbox-mcp/internal/serverconfig"
 	"github.com/pottekkat/sandbox-mcp/internal/servertoolclient"
 )
 
@@ -30,6 +31,11 @@ func main() {
 	cfg, err := appconfig.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load sandbox-mcp configuration: %v", err)
+	}
+
+	serverCfg, err := serverconfig.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load server config: %v", err)
 	}
 
 	// Pull sandboxes if pull flag is present
@@ -60,8 +66,6 @@ func main() {
 
 	pythonConfig := configs["python"]
 
-	serverTools := servertoolclient.GetTools()
-
 	// Only start MCP server if the stdio flag is present
 	if *stdio {
 		// Create a new MCP server
@@ -72,38 +76,34 @@ func main() {
 			// The list of tools never change for now
 			server.WithToolCapabilities(false),
 		)
+		for _, serverFilePath := range serverCfg.ServerPaths {
+			serverTools := servertoolclient.GetTools(serverFilePath)
+			// Create and add tools for each sandbox configuration
+			for _, tool := range serverTools {
+				// Create a new tool from the config
+				//tool := sandbox.NewSandboxTool(cfg)
 
-		// Create and add tools for each sandbox configuration
-		for _, tool := range serverTools {
-			// Create a new tool from the config
-			//tool := sandbox.NewSandboxTool(cfg)
+				clientFile, err := os.ReadFile(cfg.ClientPath)
+				if err != nil {
+					log.Printf("Error reading client file: %v\n", err)
+					return
+				}
 
-			weatherFile, err := os.ReadFile("/Users/jc/UCSD/fa25/Secure-MCP/weather/weather.py")
-			if err != nil {
-				log.Printf("Error reading weather file: %v\n", err)
-				return
+				// Create a handler using the sandbox config
+				handler := sandbox.NewSandboxToolHandler(pythonConfig, tool, serverFilePath, clientFile)
+
+				// Add the tool to the server
+				s.AddTool(tool, handler)
+
+				log.Printf("Added %s tool from config", pythonConfig.Id)
 			}
 
-			clientFile, err := os.ReadFile("/Users/jc/UCSD/fa25/227/sandbox-mcp/client.py")
-			if err != nil {
-				log.Printf("Error reading client file: %v\n", err)
-				return
+			log.Println("Starting Sandbox MCP server...")
+
+			// Start the server
+			if err := server.ServeStdio(s); err != nil {
+				log.Printf("Error starting server: %v\n", err)
 			}
-
-			// Create a handler using the sandbox config
-			handler := sandbox.NewSandboxToolHandler(pythonConfig, tool, weatherFile, clientFile)
-
-			// Add the tool to the server
-			s.AddTool(tool, handler)
-
-			log.Printf("Added %s tool from config", pythonConfig.Id)
-		}
-
-		log.Println("Starting Sandbox MCP server...")
-
-		// Start the server
-		if err := server.ServeStdio(s); err != nil {
-			log.Printf("Error starting server: %v\n", err)
 		}
 	}
 }

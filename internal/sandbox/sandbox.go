@@ -76,9 +76,15 @@ func NewSandboxTool(sandboxConfig *config.SandboxConfig) mcp.Tool {
 }
 
 // NewSandboxToolHandler creates a handler function for a sandbox tool
-func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, weatherFile []byte, clientFile []byte) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, serverFilePath string, clientFile []byte) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Return the handler function that will be run when the tool is called
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+
+		serverFile, err := os.ReadFile(serverFilePath)
+		if err != nil {
+			log.Printf("Error reading server file: %v\n", err)
+			return nil, fmt.Errorf("failed to read server file")
+		}
 
 		log.Println(request.Params.Arguments)
 
@@ -109,8 +115,8 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, w
 			}
 		*/
 
-		weatherFilePath := filepath.Join(dir, "weather.py")
-		if err := os.WriteFile(weatherFilePath, []byte(weatherFile), sandboxConfig.Mount.ScriptPerms()); err != nil {
+		dockerServerFilePath := filepath.Join(dir, "server.py")
+		if err := os.WriteFile(dockerServerFilePath, []byte(serverFile), sandboxConfig.Mount.ScriptPerms()); err != nil {
 			return nil, fmt.Errorf("failed to write weather file: %v", err)
 		}
 

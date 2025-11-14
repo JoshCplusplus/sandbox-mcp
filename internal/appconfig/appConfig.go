@@ -19,15 +19,18 @@ const (
 type Config struct {
 	// SandboxesPath is the path to the sandboxes directory
 	SandboxesPath string `json:"sandboxesPath"`
+	ClientPath    string `json:"clientPath"`
 }
 
 // DefaultConfig creates a default configuration
 func DefaultConfig() *Config {
 	// Default config path plus the sandboxes directory
 	defaultSandboxesPath := filepath.Join(xdg.ConfigHome, appName, "sandboxes")
+	defaultClientPath := filepath.Join(xdg.ConfigHome, appName, "client.py")
 	log.Printf("Creating default configuration with sandboxes path: %s", defaultSandboxesPath)
 	return &Config{
 		SandboxesPath: defaultSandboxesPath,
+		ClientPath:    defaultClientPath,
 	}
 }
 

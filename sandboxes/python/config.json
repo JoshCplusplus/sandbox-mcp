@@ -14,7 +14,7 @@
 	"command": [
 		"python",
 		"client.py",
-		"weather.py"
+		"server.py"
 	],
 	"parameters": {
 		"additionalFiles": true
