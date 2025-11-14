@@ -111,5 +111,6 @@ func GetTools(filePath string) []mcp.Tool {
 		}
 		tools = toolsResult.Tools
 	}
+	log.Println("Found tools for server: ", filePath, tools)
 	return tools
 }

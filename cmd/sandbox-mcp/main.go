@@ -76,6 +76,7 @@ func main() {
 			// The list of tools never change for now
 			server.WithToolCapabilities(false),
 		)
+		log.Println("Creating Tools for servers: ", serverCfg.ServerPaths)
 		for _, serverFilePath := range serverCfg.ServerPaths {
 			serverTools := servertoolclient.GetTools(serverFilePath)
 			// Create and add tools for each sandbox configuration
@@ -94,16 +95,14 @@ func main() {
 
 				// Add the tool to the server
 				s.AddTool(tool, handler)
-
-				log.Printf("Added %s tool from config", pythonConfig.Id)
 			}
+		}
 
-			log.Println("Starting Sandbox MCP server...")
+		log.Println("Starting Sandbox MCP server...")
 
-			// Start the server
-			if err := server.ServeStdio(s); err != nil {
-				log.Printf("Error starting server: %v\n", err)
-			}
+		// Start the server
+		if err := server.ServeStdio(s); err != nil {
+			log.Printf("Error starting server: %v\n", err)
 		}
 	}
 }
