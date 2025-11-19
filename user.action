@@ -1,0 +1,8 @@
+# ===== Default: Block EVERYTHING =====
+{ +block }
+.example.com
+.api.github.com
+
+# ===== Allow api.github.com =====
+#{ -block }
+#.api.github.com

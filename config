@@ -1,0 +1,22 @@
+# Privoxy main configuration file
+# Minimal configuration for Docker with domain filtering and forced proxying.
+
+# Listen on all interfaces so Docker can map ports
+listen-address  0.0.0.0:8118
+
+# Allow interception/transparent proxy mode (required if traffic is forced)
+accept-intercepted-requests 1
+
+# Path to action and filter files
+actionsfile user.action
+actionsfile default.action
+
+filterfile default.filter
+filterfile user.filter
+
+# Logging options
+logfile /var/log/privoxy/logfile
+
+# Keep default behavior for everything else
+max-client-connections 256
+keep-alive-timeout 5

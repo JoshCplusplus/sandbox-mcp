@@ -7,3 +7,4 @@ pympler
 scikit-learn
 seaborn
 mcp
+requests

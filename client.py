@@ -39,11 +39,11 @@ class MCPClient:
         # List available tools
         response = await self.session.list_tools()
         tools = response.tools
-        print("\nConnected to server with tools:", [tool.name for tool in tools])
-        for tool in tools:
-            print(f"Tool name is: {tool.name}")
-            print(f"Tool description is: {tool.description}")
-            print(f"Tool inputSchema is {tool.inputSchema}")
+        # print("\nConnected to server with tools:", [tool.name for tool in tools])
+        # for tool in tools:
+        #     print(f"Tool name is: {tool.name}")
+        #     print(f"Tool description is: {tool.description}")
+        #     print(f"Tool inputSchema is {tool.inputSchema}")
     
     async def run_tool(self, tool_name, tool_args=None):
                 
@@ -58,13 +58,14 @@ class MCPClient:
 
 async def main():
     if len(sys.argv) < 3:
-        print("Usage: python client.py <path_to_server_script> <tool_name> (optional)<tool_args_dict>")
+        #print("Usage: python client.py <path_to_server_script> <tool_name> (optional)<tool_args_dict>")
         sys.exit(1)
         
     client = MCPClient()
     try:
         await client.connect_to_server(sys.argv[1])
         if len(sys.argv) == 4:
+            print(sys.argv)
             return await client.run_tool(sys.argv[2], json.loads(sys.argv[3]))
         else:
             return await client.run_tool(sys.argv[2])

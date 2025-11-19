@@ -7,15 +7,19 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-connections/nat"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pottekkat/sandbox-mcp/internal/config"
 )
@@ -42,6 +46,47 @@ func waitForContainer(ctx context.Context, cli *client.Client, containerID strin
 				return nil
 			}
 		}
+	}
+}
+
+func waitForContainerRunning(ctx context.Context, cli *client.Client, containerID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for {
+		// Inspect container
+		inspect, err := cli.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return fmt.Errorf("failed to inspect container: %v", err)
+		}
+
+		if inspect.State != nil && inspect.State.Running {
+			return nil // container is running
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for container %s to start", containerID)
+		}
+
+		time.Sleep(200 * time.Millisecond) // wait a bit before retry
+	}
+}
+
+func waitForPort(ctx context.Context, host string, port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	address := fmt.Sprintf("%s:%d", host, port)
+
+	for {
+		conn, err := net.DialTimeout("tcp", address, 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil // port is open, service ready
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for port %s", address)
+		}
+
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
@@ -117,7 +162,7 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 
 		dockerServerFilePath := filepath.Join(dir, "server.py")
 		if err := os.WriteFile(dockerServerFilePath, []byte(serverFile), sandboxConfig.Mount.ScriptPerms()); err != nil {
-			return nil, fmt.Errorf("failed to write weather file: %v", err)
+			return nil, fmt.Errorf("failed to write server file: %v", err)
 		}
 
 		clientFilePath := filepath.Join(dir, "client.py")
@@ -180,8 +225,103 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 		}
 		defer cli.Close()
 
+		// ----------------------------------------------
+		// 1. Ensure Docker network exists (privoxy-net)
+		// ----------------------------------------------
+		networkName := "privoxy-net"
+
+		_, err = cli.NetworkInspect(ctx, networkName, network.InspectOptions{})
+		if err != nil {
+			// network does not exist → create it
+			_, err = cli.NetworkCreate(ctx, networkName, network.CreateOptions{
+				Driver: "bridge",
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create network %s: %v", networkName, err)
+			}
+		}
+
+		// ----------------------------------------------------
+		// 2. Start Privoxy container (if not already running)
+		// ----------------------------------------------------
+		privoxyName := "privoxy-proxy"
+		privoxyImage := "vimagick/privoxy:latest"
+
+		// Pull the image
+		_, err = cli.ImagePull(ctx, privoxyImage, image.PullOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to pull privoxy image: %v", err)
+		}
+
+		// Define Privoxy container config
+		privoxyConfig := &container.Config{
+			Image: privoxyImage,
+			ExposedPorts: nat.PortSet{
+				"8118/tcp": {},
+			},
+		}
+
+		// Attach to custom network
+		privoxyHostConfig := &container.HostConfig{
+			NetworkMode: container.NetworkMode(networkName),
+			Mounts: []mount.Mount{
+				{
+					Type:     mount.TypeBind,
+					Source:   "/Users/jc/UCSD/fa25/227/sandbox-mcp/user.action",
+					Target:   "/etc/privoxy/user.action",
+					ReadOnly: true,
+				},
+				{
+					Type:     mount.TypeBind,
+					Source:   "/Users/jc/UCSD/fa25/227/sandbox-mcp/config",
+					Target:   "/etc/privoxy/config",
+					ReadOnly: true,
+				},
+			},
+		}
+
+		// Create container
+		privoxyResp, err := cli.ContainerCreate(ctx, privoxyConfig, privoxyHostConfig, nil, nil, privoxyName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create privoxy container: %v", err)
+		}
+
+		defer func() {
+			killCtx, killCancel := context.WithTimeout(context.Background(), sandboxConfig.Timeout())
+			defer killCancel()
+
+			_ = cli.ContainerRemove(killCtx, privoxyResp.ID, container.RemoveOptions{
+				Force:         true,
+				RemoveVolumes: true,
+			})
+		}()
+
+		// Start container
+		err = cli.ContainerStart(ctx, privoxyResp.ID, container.StartOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to start privoxy container: %v", err)
+		}
+
+		// // Wait for container to be running
+		// err = waitForContainerRunning(ctx, cli, privoxyResp.ID, 10*time.Second)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		// // Get container IP
+		// inspect, _ := cli.ContainerInspect(ctx, privoxyResp.ID)
+		// ip := inspect.NetworkSettings.Networks[networkName].IPAddress
+
+		// // Wait for Privoxy to accept connections
+		// err = waitForPort(ctx, ip, 8118, 5*time.Minute)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		//time.Sleep(30 * time.Second)
 		log.Println("Config to be run is ", sandboxConfig)
 
+		newCmd := []string{tool.Name}
 		commandToRun := append(sandboxConfig.RunCommand(), tool.Name)
 		if len(request.Params.Arguments) > 0 {
 			jsonBytes, err := json.Marshal(request.Params.Arguments)
@@ -189,16 +329,23 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 				log.Fatal(err)
 			}
 			commandToRun = append(commandToRun, string(jsonBytes))
+			newCmd = append(newCmd, string(jsonBytes))
 		}
 
 		log.Println("Command to run is ", commandToRun)
 		// Create container config
 		containerConfig := &container.Config{
 			Image:      sandboxConfig.Image,
-			Cmd:        commandToRun,
+			Cmd:        newCmd,
 			WorkingDir: sandboxConfig.Mount.WorkDir,
-			User:       sandboxConfig.User,
 			Tty:        sandboxConfig.Tty(),
+			Env: []string{
+				"HTTP_PROXY=http://privoxy-proxy:8118",
+				"HTTPS_PROXY=http://privoxy-proxy:8118",
+				"http_proxy=http://privoxy-proxy:8118",
+				"https_proxy=http://privoxy-proxy:8118",
+				"NO_PROXY=localhost,127.0.0.1",
+			},
 		}
 
 		// Create host config
@@ -215,7 +362,7 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 					},
 				},
 			},
-			NetworkMode:    container.NetworkMode(sandboxConfig.Security.Network),
+			NetworkMode:    container.NetworkMode(networkName),
 			ReadonlyRootfs: sandboxConfig.Security.ReadOnly,
 			Mounts: []mount.Mount{
 				{
@@ -227,6 +374,8 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 			},
 			CapDrop:     sandboxConfig.Security.CapDrop,
 			SecurityOpt: sandboxConfig.Security.SecurityOpt,
+			CapAdd:      []string{"NET_ADMIN"},
+			Privileged:  true,
 		}
 
 		// Create execution context with timeout
@@ -239,7 +388,7 @@ func NewSandboxToolHandler(sandboxConfig *config.SandboxConfig, tool mcp.Tool, s
 			return nil, fmt.Errorf("failed to create container: %v", err)
 		}
 
-		// Ensure container cleanup
+		// // Ensure container cleanup
 		defer func() {
 			killCtx, killCancel := context.WithTimeout(context.Background(), sandboxConfig.Timeout())
 			defer killCancel()

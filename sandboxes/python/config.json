@@ -27,7 +27,7 @@
 		"securityOpt": [
 			"no-new-privileges:true"
 		],
-		"network": "none"
+		"network": "default"
 	},
 	"resources": {
 		"cpu": 1,
